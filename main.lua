@@ -1,3 +1,4 @@
+
 local PriorityQueue = require('priority-queue')
 
 local function trim(s)
@@ -6,6 +7,7 @@ end
 
 local TYPE = {
   FLOOR = 0,
+  WATER = 1,
   WALL = 100,
 }
 
@@ -18,62 +20,26 @@ local symbols = {
   newline = string.byte('\n')
 }
 
-local mapData = trim [[
-_____________________
-#__________>___#____#
-#_####_________####_#
-#______#____________#
-#____#_#_______#____#
-######_#_______######
-_____________________
-####_#####__#########
-####_#####__#########
-####_##_______#######
-_________#_#_________
-_#_#######_#######_#_
-_#_#________#____#_#_
-_#____#_____#____#_#_
-_#_####_____###__#_#_
-_@___________________
+local mapData = trim[[
+  ______________________
+  #__________>___#____
+  #_####_________####_
+  #______#____________
+  #____#_#_______#____
+  ######_#_______#####
+  ____________________
+  ####_#####__########
+  ####_#####__########
+  ####_##_______######
+  _________#_#________
+  _#_#######_#######_#
+  _#_#________#____#_#
+  _#____#_____#____#_#
+  _#_####_____###__#_#
+  _@__________________
 ]]
 
--- local mapData = trim[[
--- ^^_____#______^^
--- ^^_____#______^^
--- ^^_____#______^^
--- ^^____________^^
--- ^^_____________^
--- _____^^^^^^_____
--- _____^^^^^______
--- _____^^^^^______
--- _@___^^^^^____>_
--- ______###_______
--- ______##________
--- ^^___^^^^^____^^
--- ^^___^^^^^^^#_^^
--- ^^____________^^
--- ^^_____#______^^
--- ^^_____#______^^
--- ]]
 
--- local mapData = trim[[
--- ________________
--- _____________>__
--- _##############_
--- ______________#_
--- ______________#_
--- ______________#_
--- ______________#_
--- ______________#_
--- ______________#_
--- ______________#_
--- ______________#_
--- ______________#_
--- ___@__________#_
--- ______________#_
--- __#############_
--- ________________
--- ]]
 
 local function l1(src, dst)
   -- l1 метрика aka Манхеттенское расстояние
@@ -100,16 +66,16 @@ local function parseWorld(data)
     else
       if cell == symbols.player then
         playerPos = { x = x, y = y }
-        table.insert(map[y], { id = i, cost = 1, x = x, y = y, type = TYPE.FLOOR })
+        table.insert(map[y], { id=i, cost = 1, x = x, y = y, type=TYPE.FLOOR })
       elseif cell == symbols.target then
         targetPos = { x = x, y = y }
-        table.insert(map[y], { id = i, cost = 1, x = x, y = y, type = TYPE.FLOOR })
+        table.insert(map[y], { id=i, cost = 1, x = x, y = y, type=TYPE.FLOOR })
       elseif cell == symbols.wall then
-        table.insert(map[y], { id = i, cost = -1, x = x, y = y, type = TYPE.WALL })
+        table.insert(map[y], { id=i,cost = -1, x = x, y = y, type=TYPE.WALL })
       elseif cell == symbols.water then
-        table.insert(map[y], { id = i, cost = 3, x = x, y = y, type = TYPE.WATER })
+        table.insert(map[y], { id=i,cost = 3, x = x, y = y, type=TYPE.WATER })
       else
-        table.insert(map[y], { id = i, cost = 1, x = x, y = y, type = TYPE.FLOOR })
+        table.insert(map[y], { id=i,cost = 1, x = x, y = y, type=TYPE.FLOOR })
       end
       x = x + 1
     end
@@ -120,9 +86,9 @@ end
 
 local function neighbors(map, pos)
   local candidates = {
-    { x = pos.x - 1, y = pos.y },
+    { x = pos.x - 1, y = pos.y     },
     { x = pos.x,     y = pos.y - 1 },
-    { x = pos.x + 1, y = pos.y },
+    { x = pos.x + 1, y = pos.y     },
     { x = pos.x,     y = pos.y + 1 },
   }
   local result = {}
@@ -158,9 +124,8 @@ end
 
 local function drawPosCircle(x, y, r)
   local posX, posY = drawPos(x, y)
-  return posX + UI.bw / 2, posY + UI.bh / 2
+  return posX + UI.bw/2, posY + UI.bh/2
 end
-
 
 
 local function aStarSearch(world)
@@ -181,7 +146,6 @@ local function aStarSearch(world)
 
     -- ранний выход
     if cur.x == world.target.x and cur.y == world.target.y then
-      world.target.x = world.target.x + 1
       return false
     end
 
@@ -221,23 +185,17 @@ end
 
 function love.load()
   world = parseWorld(mapData)
+  search = aStarSearch(world)
 end
-
+local kd = 0;
 local time = 0
 local hasNext = true
-local kd = 0
-
 
 function love.update(dt)
+
   if kd > 0 then
     kd = kd - dt
   end
-  print('Player ' .. world.player.x, world.player.y)
-  -- search = breadthSearch(world)
-  -- search = breadthSearchOptimized(world)
-  -- search = deikstraSearch(world)
-  search = aStarSearch(world)
-
 
   if love.keyboard.isDown("right") and kd <= 0 then
     if world.player.x + 1 > #world.map[1] then
@@ -246,24 +204,21 @@ function love.update(dt)
       world.player.x = world.player.x + 1;
       kd = 0.2
     end
-  end
-  if love.keyboard.isDown("up") and kd <= 0 then
+  elseif love.keyboard.isDown("up") and kd <= 0 then
     if world.player.y - 1 < 1 then
       world.player.y = #world.map
     elseif world.map[world.player.y - 1][world.player.x].type == TYPE.FLOOR then
       world.player.y = world.player.y - 1;
       kd = 0.2
     end
-  end
-  if love.keyboard.isDown("down") and kd <= 0 then
+  elseif love.keyboard.isDown("down") and kd <= 0 then
     if world.player.y + 1 > #world.map then
       world.player.y = 1
     elseif world.map[world.player.y + 1][world.player.x].type == TYPE.FLOOR then
       world.player.y = world.player.y + 1;
       kd = 0.2
     end
-  end
-  if love.keyboard.isDown("left") and kd <= 0 then
+  elseif love.keyboard.isDown("left") and kd <= 0 then
     if world.player.x - 1 < 1 then
       world.player.x = #world.map[1]
     elseif world.map[world.player.y][world.player.x - 1].type == TYPE.FLOOR then
@@ -271,9 +226,7 @@ function love.update(dt)
       kd = 0.2
     end
   end
-
-
-
+  
   if hasNext then
     hasNext = search.next()
     if not hasNext then
@@ -282,7 +235,6 @@ function love.update(dt)
     end
   end
 end
-
 local floorImage = love.graphics.newImage("Floor.jpg")
 local kripWall = love.graphics.newImage("krip.jpg")
 
