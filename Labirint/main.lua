@@ -1,9 +1,10 @@
-
 local PriorityQueue = require('priority-queue')
 
 local function trim(s)
   return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
+
+local enemyKD = 0
 
 local TYPE = {
   FLOOR = 0,
@@ -20,7 +21,7 @@ local symbols = {
   newline = string.byte('\n')
 }
 
-local mapData = trim[[
+local mapData = trim [[
   ______________________
   #__________>___#____
   #_####_________####_
@@ -66,16 +67,16 @@ local function parseWorld(data)
     else
       if cell == symbols.player then
         playerPos = { x = x, y = y }
-        table.insert(map[y], { id=i, cost = 1, x = x, y = y, type=TYPE.FLOOR })
+        table.insert(map[y], { id = i, cost = 1, x = x, y = y, type = TYPE.FLOOR })
       elseif cell == symbols.target then
         targetPos = { x = x, y = y }
-        table.insert(map[y], { id=i, cost = 1, x = x, y = y, type=TYPE.FLOOR })
+        table.insert(map[y], { id = i, cost = 1, x = x, y = y, type = TYPE.FLOOR })
       elseif cell == symbols.wall then
-        table.insert(map[y], { id=i,cost = -1, x = x, y = y, type=TYPE.WALL })
+        table.insert(map[y], { id = i, cost = -1, x = x, y = y, type = TYPE.WALL })
       elseif cell == symbols.water then
-        table.insert(map[y], { id=i,cost = 3, x = x, y = y, type=TYPE.WATER })
+        table.insert(map[y], { id = i, cost = 3, x = x, y = y, type = TYPE.WATER })
       else
-        table.insert(map[y], { id=i,cost = 1, x = x, y = y, type=TYPE.FLOOR })
+        table.insert(map[y], { id = i, cost = 1, x = x, y = y, type = TYPE.FLOOR })
       end
       x = x + 1
     end
@@ -86,9 +87,9 @@ end
 
 local function neighbors(map, pos)
   local candidates = {
-    { x = pos.x - 1, y = pos.y     },
+    { x = pos.x - 1, y = pos.y },
     { x = pos.x,     y = pos.y - 1 },
-    { x = pos.x + 1, y = pos.y     },
+    { x = pos.x + 1, y = pos.y },
     { x = pos.x,     y = pos.y + 1 },
   }
   local result = {}
@@ -124,12 +125,12 @@ end
 
 local function drawPosCircle(x, y, r)
   local posX, posY = drawPos(x, y)
-  return posX + UI.bw/2, posY + UI.bh/2
+  return posX + UI.bw / 2, posY + UI.bh / 2
 end
-
-
+local path = {}
 local function aStarSearch(world)
-  local start = world.map[world.player.y][world.player.x]
+  path = {}
+  local start = world.map[world.target.y][world.target.x]
   start.visited = true
   start.from = nil
   start.costGot = 0
@@ -145,7 +146,7 @@ local function aStarSearch(world)
     local cur = queue:Pop()
 
     -- ранний выход
-    if cur.x == world.target.x and cur.y == world.target.y then
+    if cur.x == world.player.x and cur.y == world.player.y then
       return false
     end
 
@@ -154,9 +155,10 @@ local function aStarSearch(world)
       local newCost = n.cost + (cur.costGot or 0)
       if n.visited ~= true or newCost < (n.costGot or 0) then
         n.visited = true
+        table.insert(path, n)
         n.from = cur
         n.costGot = newCost
-        local priority = newCost + l1(world.target, n)
+        local priority = newCost + l1(world.player, n)
         queue:Add(n, -priority)
       end
     end
@@ -164,38 +166,49 @@ local function aStarSearch(world)
     return true
   end
 
-  return { next = next }
+  return { next = next, path = path }
 end
 
-local function backPath(world)
-  local cur = world.map[world.target.y][world.target.x]
-  local done = false
-  local path = {}
-  while not done do
-    table.insert(path, cur)
-    local prev = cur.from
-    if prev.from == nil then
-      done = true
-    else
-      cur = prev
-    end
-  end
-  world.path = path
-end
 
 function love.load()
   world = parseWorld(mapData)
-  search = aStarSearch(world)
 end
+
+local searchkd = 0
 local kd = 0;
 local time = 0
 local hasNext = true
 
 function love.update(dt)
+  if searchkd <= 0 then
+    search = aStarSearch(world)
+    searchkd = 5
+  else
+    searchkd = searchkd - dt
+  end
+  --[[  if world.path ~= nil then
+    for k, n in world.path do
+      world.target.x = n.x
+      world.target.y = n.y
+    end
+  end ]]
+  local cel = #search.path
 
+  if enemyKD > 0 then
+    enemyKD = enemyKD - dt
+  end
   if kd > 0 then
     kd = kd - dt
+  else
+    if path[cel] ~= nil and enemyKD <= 0
+    then
+      world.target.x = path[cel].x
+      world.target.y = path[cel].y
+      cel = cel - 1
+      enemyKD = 0.3
+    end
   end
+
 
   if love.keyboard.isDown("right") and kd <= 0 then
     if world.player.x + 1 > #world.map[1] then
@@ -226,15 +239,12 @@ function love.update(dt)
       kd = 0.2
     end
   end
-  
+
   if hasNext then
     hasNext = search.next()
-    if not hasNext then
-      backPath(world)
-      print('Save path')
-    end
   end
 end
+
 local floorImage = love.graphics.newImage("Floor.jpg")
 local kripWall = love.graphics.newImage("krip.jpg")
 
@@ -243,10 +253,22 @@ function love.draw()
     for x, cell in ipairs(line) do
       local bx, by = drawPos(x, y)
       if cell.type == TYPE.FLOOR then
-        love.graphics.draw(floorImage, bx, by)
+        if cell.visited == true then
+          love.graphics.setColor(0, 0.3, 0)
+        else
+          love.graphics.setColor(0, 1, 0)
+        end
+      elseif cell.type == TYPE.WATER then
+        if cell.visited == true then
+          love.graphics.setColor(0, 0, 0.3)
+        else
+          love.graphics.setColor(0, 0, 1)
+        end
       else
-        love.graphics.draw(kripWall, bx, by)
+        love.graphics.setColor(1, 0, 0)
       end
+
+      love.graphics.rectangle('fill', bx, by, UI.bw, UI.bh)
     end
   end
 
