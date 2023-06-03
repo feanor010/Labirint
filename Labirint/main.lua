@@ -6,6 +6,14 @@ end
 
 local enemyKD = 0
 
+local player = {
+  scores = 0
+}
+
+local eat = {
+
+}
+
 local TYPE = {
   FLOOR = 0,
   WATER = 1,
@@ -106,7 +114,8 @@ local function neighbors(map, pos)
   return result
 end
 
-local world = nil
+local world
+
 local search = nil
 local UI = {
   bw = 32,
@@ -127,26 +136,36 @@ local function drawPosCircle(x, y, r)
   local posX, posY = drawPos(x, y)
   return posX + UI.bw / 2, posY + UI.bh / 2
 end
-local path = {}
+
+local function drawPosEat(x, y, r)
+  local posX, posY = drawPos(x, y)
+  return posX + UI.bw / 2, posY + UI.bh / 2
+end
+
 local function aStarSearch(world)
-  path = {}
-  local start = world.map[world.target.y][world.target.x]
+  local start = world.map[world.player.y][world.player.x]
+  for x = 1, #world.map[1] do
+    for y = 1, #world.map do
+      world.map[y][x].visited = false
+      --[[ world.map[y][x].from = nil ]]
+      world.map[y][x].costGot = 0
+      print(world.map[y][x].from)
+    end
+  end
   start.visited = true
   start.from = nil
   start.costGot = 0
 
   local queue = PriorityQueue.new()
   queue:Add(start, 0)
-
   local function next()
     if queue:Size() < 1 then
       return false
     end
-
     local cur = queue:Pop()
 
     -- ранний выход
-    if cur.x == world.player.x and cur.y == world.player.y then
+    if cur.x == world.target.x and cur.y == world.target.y then
       return false
     end
 
@@ -155,10 +174,9 @@ local function aStarSearch(world)
       local newCost = n.cost + (cur.costGot or 0)
       if n.visited ~= true or newCost < (n.costGot or 0) then
         n.visited = true
-        table.insert(path, n)
         n.from = cur
         n.costGot = newCost
-        local priority = newCost + l1(world.player, n)
+        local priority = newCost + l1(world.target, n)
         queue:Add(n, -priority)
       end
     end
@@ -166,49 +184,93 @@ local function aStarSearch(world)
     return true
   end
 
-  return { next = next, path = path }
+  return { next = next }
+end
+local mas1 = {}
+local mas = {}
+local function backPath(world)
+  mas1 = {}
+  local cur = world.map[world.target.y][world.target.x]
+  local done = false
+  local path = {}
+  while not done do
+    table.insert(path, cur)
+    table.insert(mas1, cur)
+    local prev = cur.from
+    if prev.from == nil then
+      done = true
+    else
+      cur = prev
+    end
+  end
+  world.path = path
 end
 
 
 function love.load()
   world = parseWorld(mapData)
+  search = aStarSearch(world)
 end
 
 local searchkd = 0
-local kd = 0;
-local time = 0
-local hasNext = true
-
+local kd       = 0;
+local time     = 0
+local hasNext  = true
+local k        = 2
+local w        = 1
 function love.update(dt)
-  if searchkd <= 0 then
-    search = aStarSearch(world)
-    searchkd = 5
-  else
-    searchkd = searchkd - dt
-  end
-  --[[  if world.path ~= nil then
-    for k, n in world.path do
-      world.target.x = n.x
-      world.target.y = n.y
+  for i, j in ipairs(eat) do
+    if j.x == world.player.x and j.y == world.player.y then
+      player.scores = player.scores + 100
+      DeleteEl(i, eat)
     end
-  end ]]
-  local cel = #search.path
+  end
+  function DeleteEl(pos, arr)
+    if (arr ~= nil) then
+      arr[pos], arr[#arr] = arr[#arr], arr[pos]
+      table.remove(arr, #arr)
+    end
+  end
+
+  if world.map[1] then
+    if w == 1 then
+      for i = 1, 5 do
+        local x = love.math.random(1, #world.map[1])
+        local y = love.math.random(1, #world.map)
+        if world.map[y][x].type ~= TYPE.WALL then
+          local tar = { x = x, y = y }
+          table.insert(eat, tar)
+        end
+      end
+      w = w + 1
+    end
+  end
+
+  if hasNext then
+    hasNext = search.next()
+    if not hasNext then
+      search = aStarSearch(world)
+      mas = mas1
+      k = 2
+      backPath(world)
+      hasNext = true
+    end
+  end
 
   if enemyKD > 0 then
     enemyKD = enemyKD - dt
   end
   if kd > 0 then
     kd = kd - dt
-  else
-    if path[cel] ~= nil and enemyKD <= 0
-    then
-      world.target.x = path[cel].x
-      world.target.y = path[cel].y
-      cel = cel - 1
-      enemyKD = 0.3
-    end
   end
 
+
+  if enemyKD <= 0 and mas[k] ~= nil then
+    world.target.x = mas[k].x
+    world.target.y = mas[k].y
+    enemyKD = 0.3
+    k = k + 1
+  end
 
   if love.keyboard.isDown("right") and kd <= 0 then
     if world.player.x + 1 > #world.map[1] then
@@ -239,52 +301,36 @@ function love.update(dt)
       kd = 0.2
     end
   end
-
-  if hasNext then
-    hasNext = search.next()
-  end
 end
 
 local floorImage = love.graphics.newImage("Floor.jpg")
 local kripWall = love.graphics.newImage("krip.jpg")
+local apple = love.graphics.newImage("apple.jpg")
 
 function love.draw()
   for y, line in ipairs(world.map) do
     for x, cell in ipairs(line) do
       local bx, by = drawPos(x, y)
       if cell.type == TYPE.FLOOR then
-        if cell.visited == true then
-          love.graphics.setColor(0, 0.3, 0)
-        else
-          love.graphics.setColor(0, 1, 0)
-        end
-      elseif cell.type == TYPE.WATER then
-        if cell.visited == true then
-          love.graphics.setColor(0, 0, 0.3)
-        else
-          love.graphics.setColor(0, 0, 1)
-        end
+        love.graphics.draw(floorImage, bx, by)
       else
-        love.graphics.setColor(1, 0, 0)
+        love.graphics.draw(kripWall, bx, by)
       end
-
-      love.graphics.rectangle('fill', bx, by, UI.bw, UI.bh)
     end
   end
-
   local px, py = drawPosCircle(world.player.x, world.player.y, UI.pr)
   love.graphics.setColor(1, 0, 1)
   love.graphics.circle('fill', px, py, UI.pr)
-
   local tx, ty = drawPosCircle(world.target.x, world.target.y, UI.tr)
   love.graphics.setColor(1, 1, 1)
   love.graphics.circle('fill', tx, ty, UI.tr)
+  love.graphics.setColor(256, 256, 256)
+  love.graphics.print("Your score = " .. tostring(player.scores))
+  love.graphics.setColor(255, 255, 0)
+  for _, j in ipairs(eat) do
+    local kx, ky = drawPosEat(j.x, j.y, UI.pr)
 
-  if world.path ~= nil then
-    for _, d in ipairs(world.path) do
-      local dx, dy = drawPosCircle(d.x, d.y, UI.dr)
-      love.graphics.setColor(1, 1, 1)
-      love.graphics.circle('fill', dx, dy, UI.dr)
-    end
+    love.graphics.circle('fill', kx, ky, UI.tr - 3)
   end
+  love.graphics.setColor(255, 255, 255)
 end
